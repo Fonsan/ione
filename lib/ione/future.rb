@@ -432,30 +432,53 @@ module Ione
       #   that will resolve to the transformed value.
       # @return [Ione::Future] a new future representing the transformed value
       def then(&block)
-        f = CompletableFuture.new
-        on_complete do |v, e|
-          if e
-            f.fail(e)
-          else
-            begin
-              fv = block.call(v)
-              if fv.respond_to?(:on_complete)
-                fv.on_complete do |vv, ee|
-                  if ee
-                    f.fail(ee)
-                  else
-                    f.resolve(vv)
-                  end
+        if resolved?
+          begin
+            fv = block.call(@value)
+            if fv.respond_to?(:on_complete)
+              f = CompletableFuture.new
+              fv.on_complete do |v, e|
+                if e
+                  f.fail(e)
+                else
+                  f.resolve(v)
                 end
-              else
-                f.resolve(fv)
               end
-            rescue => e
+              f
+            else
+              Future.resolved(fv)
+            end
+          rescue => e
+            Future.failed(e)
+          end
+        elsif failed?
+          self
+        else
+          f = CompletableFuture.new
+          on_complete do |v, e|
+            if e
               f.fail(e)
+            else
+              begin
+                fv = block.call(v)
+                if fv.respond_to?(:on_complete)
+                  fv.on_complete do |vv, ee|
+                    if ee
+                      f.fail(ee)
+                    else
+                      f.resolve(vv)
+                    end
+                  end
+                else
+                  f.resolve(fv)
+                end
+              rescue => e
+                f.fail(e)
+              end
             end
           end
+          f
         end
-        f
       end
 
       # Returns a new future which represents either the value of the original
