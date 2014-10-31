@@ -88,8 +88,7 @@ module Ione
         @io_loop = IoLoopBody.new(options)
         @io_loop.add_socket(@unblocker)
         @scheduler = Scheduler.new
-        @running = false
-        @stopped = false
+        @state = :pending
         @started_promise = Promise.new
         @stopped_promise = Promise.new
         @lock = Mutex.new
@@ -110,7 +109,7 @@ module Ione
       # after {#stop} has been called, but false when the future returned by
       # {#stop} completes.
       def running?
-        @running
+        @state == :running
       end
 
       # Starts the reactor. This will spawn a background thread that will manage
@@ -122,21 +121,21 @@ module Ione
       # @return [Ione::Future] a future that will resolve to the reactor itself
       def start
         @lock.synchronize do
-          raise ReactorError, 'Cannot start a stopped IO reactor' if @stopped
-          return @started_promise.future if @running
-          @running = true
+          raise ReactorError, 'Cannot start a stopped IO reactor' if @state == :stopped
+          return @started_promise.future if @state == :running
+          @state = :running
         end
         Thread.start do
           @started_promise.fulfill(self)
           begin
-            until @stopped
+            while @state == :running
               @io_loop.tick
               @scheduler.tick
             end
           ensure
             @io_loop.close_sockets
             @scheduler.cancel_timers
-            @running = false
+            @state = :stopped
             if $!
               @stopped_promise.fail($!)
             else
@@ -155,7 +154,7 @@ module Ione
       #
       # @return [Ione::Future] a future that will resolve to the reactor itself
       def stop
-        @stopped = true
+        @state = :stopping
         @stopped_promise.future
       end
 
