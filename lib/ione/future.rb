@@ -345,15 +345,7 @@ module Ione
         else
           f = CompletableFuture.new
           on_complete do |v, e|
-            if e
-              f.fail(e)
-            else
-              begin
-                f.resolve(block ? block.call(v) : value)
-              rescue => e
-                f.fail(e)
-              end
-            end
+            f.observe(map(value, &block))
           end
           f
         end
@@ -381,23 +373,8 @@ module Ione
           self
         else
           f = CompletableFuture.new
-          on_complete do |v, e|
-            if e
-              f.fail(e)
-            else
-              begin
-                ff = block.call(v)
-                ff.on_complete do |vv, ee|
-                  if ee
-                    f.fail(ee)
-                  else
-                    f.resolve(vv)
-                  end
-                end
-              rescue => e
-                f.fail(e)
-              end
-            end
+          on_complete do
+            f.observe(flat_map(&block))
           end
           f
         end
@@ -442,27 +419,8 @@ module Ione
           self
         else
           f = CompletableFuture.new
-          on_complete do |v, e|
-            if e
-              f.fail(e)
-            else
-              begin
-                fv = block.call(v)
-                if fv.respond_to?(:on_complete)
-                  fv.on_complete do |vv, ee|
-                    if ee
-                      f.fail(ee)
-                    else
-                      f.resolve(vv)
-                    end
-                  end
-                else
-                  f.resolve(fv)
-                end
-              rescue => e
-                f.fail(e)
-              end
-            end
+          on_complete do
+            f.observe(self.then(&block))
           end
           f
         end
@@ -498,16 +456,8 @@ module Ione
           end
         else
           f = CompletableFuture.new
-          on_complete do |v, e|
-            if e
-              begin
-                f.resolve(block ? block.call(e) : value)
-              rescue => e
-                f.fail(e)
-              end
-            else
-              f.resolve(v)
-            end
+          on_complete do
+            f.observe(recover(value, &block))
           end
           f
         end
@@ -546,23 +496,8 @@ module Ione
           end
         else
           f = CompletableFuture.new
-          on_complete do |v, e|
-            if e
-              begin
-                ff = block.call(e)
-                ff.on_complete do |vv, ee|
-                  if ee
-                    f.fail(ee)
-                  else
-                    f.resolve(vv)
-                  end
-                end
-              rescue => e
-                f.fail(e)
-              end
-            else
-              f.resolve(v)
-            end
+          on_complete do
+            f.observe(fallback(&block))
           end
           f
         end
