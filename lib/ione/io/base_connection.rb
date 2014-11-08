@@ -15,6 +15,7 @@ module Ione
         @lock = Mutex.new
         @write_buffer = ByteBuffer.new
         @closed_promise = Promise.new
+        @data_stream = Stream::PushStream.new
       end
 
       # Closes the connection
@@ -96,7 +97,8 @@ module Ione
       #
       # @yield [String] the new data
       def on_data(&listener)
-        @data_listener = listener
+        @data_stream.each(&listener)
+        nil
       end
 
       # Register to receive a notification when the socket is closed, both for
@@ -159,8 +161,7 @@ module Ione
 
       # @private
       def read
-        new_data = @io.read_nonblock(2**16)
-        @data_listener.call(new_data) if @data_listener
+        @data_stream << @io.read_nonblock(2**16)
       rescue => e
         close(e)
       end
