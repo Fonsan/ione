@@ -21,7 +21,9 @@ module Ione
 
     def get(url, headers={})
       uri = URI.parse(url)
-      f = @reactor.connect(uri.host, uri.port, 1) { |connection| HttpProtocolHandler.new(connection) }
+      f = @reactor.connect(uri.host, uri.port, timeout: 1) do |connection|
+        HttpProtocolHandler.new(connection)
+      end
       f.flat_map do |handler|
         handler.send_get(uri.path, uri.query, headers)
       end
@@ -37,18 +39,22 @@ module Ione
     end
 
     def send_get(path, query, headers)
-      message = 'GET '
-      message << path
-      message << '?' << query if query && !query.empty?
-      message << " HTTP/1.1\r\n"
-      headers.each do |key, value|
-        message << key
-        message << ':'
-        message << value
-        message << "\r\n"
+      @connection.write do |buffer|
+        buffer << 'GET '
+        buffer << path
+        if query && !query.empty?
+          buffer << '?'
+          buffer << query
+        end
+        buffer << " HTTP/1.1\r\n"
+        headers.each do |key, value|
+          buffer << key
+          buffer << ':'
+          buffer << value
+          buffer << "\r\n"
+        end
+        buffer << "\r\n"
       end
-      message << "\r\n"
-      @connection.write(message)
       @promises << Promise.new
       @promises.last.future
     end
@@ -71,7 +77,8 @@ module Ione
     end
 
     def on_message_complete
-      @promises.shift.fulfill(HttpResponse.new(@http_parser.status_code, @headers, @body))
+      response = HttpResponse.new(@http_parser.status_code, @headers, @body)
+      @promises.shift.fulfill(response)
     end
   end
 
